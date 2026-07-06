@@ -1,0 +1,190 @@
+<div align="center">
+
+# 🚀 xray-warp-multiple
+
+**多入站端口 → 多个「相互独立」的免费 WARP 出口**
+
+一条命令，开出 N 个代理端口，每个端口各走一套**独立注册**的 Cloudflare WARP 账号出网。
+
+![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20OpenWrt-blue)
+![Shell](https://img.shields.io/badge/shell-Bash%20%7C%20POSIX%20sh-89e051)
+![Core](https://img.shields.io/badge/core-Xray%20%7C%20sing--box-orange)
+![Egress](https://img.shields.io/badge/egress-Cloudflare%20WARP-f38020)
+![License](https://img.shields.io/badge/license-仅供学习研究-lightgrey)
+
+</div>
+
+---
+
+## ✨ 这是什么
+
+基于甬哥（[yonggekkk/argosbx](https://github.com/yonggekkk/argosbx)）小钢炮脚本的 WARP / WireGuard 出站格式改造而来，**只专注做一件事**：
+
+> 开 **N 个入站端口**，每个端口绑定 **一套单独注册的免费 WARP 账号** 作为出口，端口之间的出口（`reserved` / 私钥 / WireGuard 隧道）**互相独立、互不干扰**。
+
+适合需要「一机多出口、多身份分流」的场景，例如给不同业务/账号分配互不串味的出口通道。
+
+### ⚠️ 关于「出口 IP 是否真的不同」（务必先读）
+
+免费 WARP 的落地 IP 由 Cloudflare 就近数据中心从**有限的地址池**分配：
+
+- 多套密钥能保证**出口通道相互独立**（各自的 WireGuard 隧道、`reserved`、密钥都不同）；
+- 但**落地 IP 很可能落在同一区域甚至相同**，无法保证每个端口的出口公网 IP 都不一样。
+- 脚本提供 `uniq=y` 开关：逐个端口真实探测出口 IP，重复就重新注册换端点，**强制各端口出口 IP 互不相同**；若本机可用的不同出口不足 N 个，脚本会**明确报错并中止**，绝不给你发重复出口的节点。
+- 想要稳定、大量的不同落地 IP，需要 **WARP+（不同 license）** 或**不同上游落地**，免费 WARP 做不到。
+
+---
+
+## 📦 仓库内容
+
+| 文件 | 平台 | 内核 | 入站协议 | 说明 |
+| :--- | :--- | :--- | :--- | :--- |
+| [`argosb-nw-vps.sh`](argosb-nw-vps.sh) | VPS / Linux | **Xray** | Vmess-ws | 每个端口一套独立 WARP 出口，直连本机 IP、无 TLS |
+| [`argosb-mw-openwrt.sh`](argosb-mw-openwrt.sh) | OpenWrt / BusyBox | **sing-box** | socks5 + http + https（mixed） | 单端口三合一代理，专为软路由 musl 环境适配 |
+| [`argosbx.sh`](argosbx.sh) | 通用 | Xray / sing-box | 多协议 | 甬哥原版上游脚本（V26.x），改造基础，供参考 |
+
+> 两个自制脚本（`*-nw-vps` / `*-mw-openwrt`）都带唯一标识 `agsb-mw`，**卸载时只清理自身**，绝不误伤系统里已有的其它 xray / sing-box / vmess 安装。
+
+---
+
+## 🚀 快速开始
+
+### 一、VPS / Linux 版（Vmess-ws，Xray）
+
+```bash
+# 开 5 个 vmess-ws 端口，各配 1 套独立 WARP 出口
+num=5 bash argosb-nw-vps.sh
+
+# 指定起始端口（20000, 20001, 20002 …）
+num=3 startport=20000 bash argosb-nw-vps.sh
+
+# 显式指定端口列表
+ports="20001 20002 30000" bash argosb-nw-vps.sh
+
+# 强制每个端口出口 IP 互不相同（默认关闭）
+uniq=y num=5 bash argosb-nw-vps.sh
+```
+
+**管理命令：**
+
+```bash
+bash argosb-nw-vps.sh list   # 查看节点信息（vmess 分享链接）
+bash argosb-nw-vps.sh del    # 彻底卸载（仅清理自身）
+```
+
+### 二、OpenWrt / 软路由版（socks5 + http + https，sing-box）
+
+```bash
+# 开 5 个端口，每个都是 socks5+http+https 三合一，各一套独立 WARP
+num=5 sh argosb-mw-openwrt.sh
+
+# 指定起始端口
+num=5 startport=30000 sh argosb-mw-openwrt.sh
+
+# 给代理端口加账号密码
+num=5 user=me pass=123 sh argosb-mw-openwrt.sh
+
+# 强制各端口出口 IP 互不相同
+num=5 uniq=y sh argosb-mw-openwrt.sh
+```
+
+**管理命令：**
+
+```bash
+sh argosb-mw-openwrt.sh list   # 查看节点信息
+sh argosb-mw-openwrt.sh del    # 彻底卸载（仅清理自身）
+```
+
+> OpenWrt 版监听默认 `0.0.0.0`，端口对局域网开放，供内网其它设备用「路由器IP:端口」连接。**请配好防火墙，切勿暴露到公网。**
+
+---
+
+## ⚙️ 环境变量参数
+
+所有配置都通过**环境变量**在命令前传入，无需交互。
+
+### 通用参数（两个脚本都支持）
+
+| 变量 | 默认值 | 说明 |
+| :--- | :--- | :--- |
+| `num` | `3` | 端口数量（每个端口一套 WARP 出口） |
+| `startport` | VPS 随机 / OpenWrt `20000` | 起始端口，依次递增 |
+| `ports` | — | 显式指定端口列表（空格分隔），设置后忽略 `num`/`startport` |
+| `uniq` | `n` | `y` 时强制每个端口出口 IP 互不相同；不足则报错中止 |
+| `maxtry` | `30` | `uniq=y` 时，单个端口取得唯一出口 IP 的最大重试次数 |
+| `regretry` | `12` | 单次 WARP 账号注册的最大重试次数（应对 CF 限流） |
+| `regsleep` | `3` | 相邻端口注册之间的间隔秒数（放慢以规避 429/1015 限流） |
+
+### VPS 版（`argosb-nw-vps.sh`）专有
+
+| 变量 | 默认值 | 说明 |
+| :--- | :--- | :--- |
+| `uuid` | 随机生成 | 所有端口共用的 Vmess UUID |
+| `wspath` | `/argosbmw` | WebSocket 路径 |
+
+### OpenWrt 版（`argosb-mw-openwrt.sh`）专有
+
+| 变量 | 默认值 | 说明 |
+| :--- | :--- | :--- |
+| `user` / `pass` | 空（不鉴权） | 给代理端口设置账号密码 |
+| `listen` | `0.0.0.0` | 监听地址 |
+| `wanif` | 自动识别 | 出网物理网卡；`wanif=none` 关闭绑定 |
+| `wgport` | 自动探测 | WARP 端点端口（国内常封 2408，自动改 2506/1701… 等） |
+| `wgports` | 内置候选列表 | 端点端口探测候选集 |
+| `dohurl` | `https://1.1.1.1/dns-query` | 走 WARP 隧道的 DoH 解析地址 |
+| `ghmirror` | — | 自定义 GitHub 下载镜像（内核下载加速/兜底） |
+| `sbver` | `1.11.11` | sing-box 版本（锁静态版，musl 必需；`latest` 取最新） |
+| `sbarch` | 自动识别 | 强制指定架构（x86_64/arm64/armv7/mips…） |
+
+---
+
+## 🔍 工作原理
+
+```
+        入站端口 1 ──► WARP 账号 #1 (私钥/reserved 独立) ──► Cloudflare 出口 A
+客户端 ─┤ 入站端口 2 ──► WARP 账号 #2 (私钥/reserved 独立) ──► Cloudflare 出口 B
+        入站端口 N ──► WARP 账号 #N (私钥/reserved 独立) ──► Cloudflare 出口 …
+```
+
+1. **注册 WARP**：为每个端口用 `openssl`/`wg` 生成 X25519 密钥对，POST 到 `api.cloudflareclient.com` 注册一套免费 WARP 账号，解析出 `client_id`（→ `reserved`）与内网 v6 地址。识别 CF 限流（429/1015）并**指数退避重试**。
+2. **建立出站**：每套账号生成一个 WireGuard（WARP）出站，各自独立的 `secretKey` / `reserved` / 端点。
+3. **精确分流**：路由规则把「入站端口 i」严格绑定到「WARP 出站 i」，端口之间**互不串味**。
+4. **可选去重**（`uniq=y`）：启一个临时内核实例，`curl` Cloudflare trace 探测真实出口 IP，重复就换端点重注册，直至各端口出口 IP 全不相同；最终还有一次全局断言兜底。
+5. **托管运行**：VPS 用 systemd / OpenRC，OpenWrt 用 procd，非上述环境退回 `nohup`/`setsid` 后台运行，并做配置自检（`xray -test` / `sing-box check`）。
+
+---
+
+## 🧩 依赖与兼容性
+
+- **VPS 版**：硬依赖仅 `curl`、`openssl`（几乎系统自带），JSON 用 `grep` 解析已**不再需要 jq**；解压内核优先 `unzip`，缺失自动回退 `python3`。自动识别 apt / dnf / yum / apk / pacman / zypper 并按需安装。支持 x86_64 / arm64 / armv7 / s390x。
+- **OpenWrt 版**：纯 POSIX sh，兼容 BusyBox ash（无 bash 数组）；用 `opkg` 自动装 `curl` / `ca-bundle` / `wireguard-tools`；`sing-box` 自动下载并**真跑校验、坏了自愈重下**。自动识别物理 WAN 网卡（绕过 OpenClash/PassWall 等 TUN 全局代理），自动探测可直连端点端口，自带 DoH 绕开 fake-ip。支持 x86_64 / arm64 / armv7 / mips 等。
+
+---
+
+## ❓ 常见问题
+
+**Q：为什么开了 `uniq=y` 却提示无法取得足够的不同出口 IP？**
+A：免费 WARP 出口 IP 从有限池就近分配，你这台机器能摸到的不同出口本就少于 N 个。可减少端口数、调大 `maxtry=60`，或改用 WARP+ / 不同上游落地。
+
+**Q：注册很慢 / 一直提示 429？**
+A：Cloudflare 对 WARP 注册接口有限流。端口越多越明显，脚本已自动退避重试并按 `regsleep` 间隔放慢，端口多时耗时数分钟属正常。可适当调大 `regsleep`。
+
+**Q：小内存 VPS / 软路由能开几个？**
+A：每个端口都是一条 WireGuard 隧道，N 条隧道对内存、CPU 有实打实的压力，请量力而行，不建议在低配机上开太多。
+
+**Q：卸载会不会误删我别的节点？**
+A：不会。两个脚本的一切都带唯一标识 `agsb-mw`（工作目录、服务名、进程命令行），`del` 只按此标识精确清理自身。
+
+---
+
+## 🙏 致谢
+
+- 出站格式与整体思路改造自甬哥的一键无交互脚本 **[yonggekkk/argosbx](https://github.com/yonggekkk/argosbx)**（本仓库 [`argosbx.sh`](argosbx.sh) 为其原版）。
+- 出口能力由 **[Cloudflare WARP](https://1.1.1.1/)** 提供。
+- 内核：**[XTLS/Xray-core](https://github.com/XTLS/Xray-core)** 与 **[SagerNet/sing-box](https://github.com/SagerNet/sing-box)**。
+
+---
+
+## 📄 免责声明
+
+本仓库脚本仅供**学习、研究与合法的网络技术用途**。请遵守你所在国家/地区的法律法规，以及 Cloudflare WARP 的服务条款。因使用本项目造成的一切后果由使用者自行承担，作者不承担任何责任。

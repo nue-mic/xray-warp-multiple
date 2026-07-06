@@ -1,0 +1,9 @@
+# 默认：按内容自动识别文本并规范化换行
+* text=auto
+
+# Shell 脚本强制 LF —— 防止在 Linux/OpenWrt/VPS 上因 CRLF 出现
+# "bad interpreter: /bin/sh^M" 类错误
+*.sh  text eol=lf
+
+# 文档保持 LF
+*.md  text eol=lf
