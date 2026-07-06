@@ -50,9 +50,9 @@
 ## 🚀 快速开始
 
 > **无需手动下载脚本**，命令里已用 `curl` 拉取远程脚本、直接执行；参数照旧写在最前面的环境变量里。
-> **国内网络访问不到 `raw.githubusercontent.com`** 时，把命令里的
-> `https://raw.githubusercontent.com/nue-mic/xray-warp-multiple/main`
-> 整段替换为下列任一加速前缀即可（其余不变）：
+> **命令里默认走自建加速代理** `https://gh-raw.966788.xyz/xray-warp`（国内可直连）。
+> 若该代理失效，把命令里的这段前缀整段替换为下列任一源即可（其余不变）：
+> - `https://raw.githubusercontent.com/nue-mic/xray-warp-multiple/main`（GitHub 官方源）
 > - `https://cdn.jsdelivr.net/gh/nue-mic/xray-warp-multiple@main`
 > - `https://gh-proxy.com/https://raw.githubusercontent.com/nue-mic/xray-warp-multiple/main`
 
@@ -60,23 +60,23 @@
 
 ```bash
 # 开 5 个 vmess-ws 端口，各配 1 套独立 WARP 出口
-num=5 bash <(curl -Ls https://raw.githubusercontent.com/nue-mic/xray-warp-multiple/main/argosb-nw-vps.sh)
+num=5 bash <(curl -Ls https://gh-raw.966788.xyz/xray-warp/argosb-nw-vps.sh)
 
 # 指定起始端口（20000, 20001, 20002 …）
-num=3 startport=20000 bash <(curl -Ls https://raw.githubusercontent.com/nue-mic/xray-warp-multiple/main/argosb-nw-vps.sh)
+num=3 startport=20000 bash <(curl -Ls https://gh-raw.966788.xyz/xray-warp/argosb-nw-vps.sh)
 
 # 显式指定端口列表
-ports="20001 20002 30000" bash <(curl -Ls https://raw.githubusercontent.com/nue-mic/xray-warp-multiple/main/argosb-nw-vps.sh)
+ports="20001 20002 30000" bash <(curl -Ls https://gh-raw.966788.xyz/xray-warp/argosb-nw-vps.sh)
 
 # 强制每个端口出口 IP 互不相同（默认关闭）
-uniq=y num=5 bash <(curl -Ls https://raw.githubusercontent.com/nue-mic/xray-warp-multiple/main/argosb-nw-vps.sh)
+uniq=y num=5 bash <(curl -Ls https://gh-raw.966788.xyz/xray-warp/argosb-nw-vps.sh)
 ```
 
 **管理命令：**
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/nue-mic/xray-warp-multiple/main/argosb-nw-vps.sh) list   # 查看节点信息（vmess 分享链接）
-bash <(curl -Ls https://raw.githubusercontent.com/nue-mic/xray-warp-multiple/main/argosb-nw-vps.sh) del    # 彻底卸载（仅清理自身）
+bash <(curl -Ls https://gh-raw.966788.xyz/xray-warp/argosb-nw-vps.sh) list   # 查看节点信息（vmess 分享链接）
+bash <(curl -Ls https://gh-raw.966788.xyz/xray-warp/argosb-nw-vps.sh) del    # 彻底卸载（仅清理自身）
 ```
 
 ### 二、OpenWrt / 软路由版（socks5 + http + https，sing-box）
@@ -86,24 +86,24 @@ bash <(curl -Ls https://raw.githubusercontent.com/nue-mic/xray-warp-multiple/mai
 # 环境变量要写在管道右侧的 sh 前面。
 
 # 开 5 个端口，每个都是 socks5+http+https 三合一，各一套独立 WARP
-curl -Ls https://raw.githubusercontent.com/nue-mic/xray-warp-multiple/main/argosb-mw-openwrt.sh | num=5 sh -s
+curl -Ls https://gh-raw.966788.xyz/xray-warp/argosb-mw-openwrt.sh | num=5 sh -s
 
 # 指定起始端口
-curl -Ls https://raw.githubusercontent.com/nue-mic/xray-warp-multiple/main/argosb-mw-openwrt.sh | num=5 startport=30000 sh -s
+curl -Ls https://gh-raw.966788.xyz/xray-warp/argosb-mw-openwrt.sh | num=5 startport=30000 sh -s
 
 # 给代理端口加账号密码
-curl -Ls https://raw.githubusercontent.com/nue-mic/xray-warp-multiple/main/argosb-mw-openwrt.sh | num=5 user=me pass=123 sh -s
+curl -Ls https://gh-raw.966788.xyz/xray-warp/argosb-mw-openwrt.sh | num=5 user=me pass=123 sh -s
 
 # 强制各端口出口 IP 互不相同
-curl -Ls https://raw.githubusercontent.com/nue-mic/xray-warp-multiple/main/argosb-mw-openwrt.sh | num=5 uniq=y sh -s
+curl -Ls https://gh-raw.966788.xyz/xray-warp/argosb-mw-openwrt.sh | num=5 uniq=y sh -s
 ```
 
 **管理命令：**
 
 ```bash
 # 管理命令要走位置参数，管道方式需加 -s --
-curl -Ls https://raw.githubusercontent.com/nue-mic/xray-warp-multiple/main/argosb-mw-openwrt.sh | sh -s -- list   # 查看节点信息
-curl -Ls https://raw.githubusercontent.com/nue-mic/xray-warp-multiple/main/argosb-mw-openwrt.sh | sh -s -- del    # 彻底卸载（仅清理自身）
+curl -Ls https://gh-raw.966788.xyz/xray-warp/argosb-mw-openwrt.sh | sh -s -- list   # 查看节点信息
+curl -Ls https://gh-raw.966788.xyz/xray-warp/argosb-mw-openwrt.sh | sh -s -- del    # 彻底卸载（仅清理自身）
 ```
 
 > OpenWrt 版监听默认 `0.0.0.0`，端口对局域网开放，供内网其它设备用「路由器IP:端口」连接。**请配好防火墙，切勿暴露到公网。**
