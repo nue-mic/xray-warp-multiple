@@ -68,6 +68,9 @@ num=3 startport=20000 bash <(curl -Ls https://gh-raw.966788.xyz/xray-warp/argosb
 # 显式指定端口列表
 ports="20001 20002 30000" bash <(curl -Ls https://gh-raw.966788.xyz/xray-warp/argosb-nw-vps.sh)
 
+# 指定所有端口共用的 UUID（不传则自动生成随机 UUID）
+uuid="123e4567-e89b-12d3-a456-426614174000" num=4 bash <(curl -Ls https://gh-raw.966788.xyz/xray-warp/argosb-nw-vps.sh)
+
 # 强制每个端口出口 IP 互不相同（默认关闭）
 uniq=y num=5 bash <(curl -Ls https://gh-raw.966788.xyz/xray-warp/argosb-nw-vps.sh)
 ```
@@ -130,7 +133,7 @@ curl -Ls https://gh-raw.966788.xyz/xray-warp/argosb-mw-openwrt.sh | sh -s -- del
 
 | 变量 | 默认值 | 说明 |
 | :--- | :--- | :--- |
-| `uuid` | 随机生成 | 所有端口共用的 Vmess UUID |
+| `uuid` | 随机生成 | 所有端口共用的 Vmess UUID；不传则自动生成，需为合法 8-4-4-4-12 格式（详见下方[「🔑 uuid 用法详解」](#-uuid-用法详解vps-版)） |
 | `wspath` | `/argosbmw` | WebSocket 路径 |
 
 ### OpenWrt 版（`argosb-mw-openwrt.sh`）专有
@@ -146,6 +149,28 @@ curl -Ls https://gh-raw.966788.xyz/xray-warp/argosb-mw-openwrt.sh | sh -s -- del
 | `ghmirror` | — | 自定义 GitHub 下载镜像（内核下载加速/兜底） |
 | `sbver` | `1.11.11` | sing-box 版本（锁静态版，musl 必需；`latest` 取最新） |
 | `sbarch` | 自动识别 | 强制指定架构（x86_64/arm64/armv7/mips…） |
+
+### 🔑 uuid 用法详解（VPS 版）
+
+`uuid` 是所有 vmess-ws 端口共用的**客户端凭据（节点 id）**。所有端口共用同一个 UUID，客户端只需维护一份凭据即可连接全部节点。
+
+- **默认**：不传 `uuid` 时，脚本自动生成一个随机 UUID（取自 `/proc/sys/kernel/random/uuid`）。
+- **传参**：以「环境变量前缀」形式写在命令最前面，**等号两侧不留空格**：
+
+```bash
+# 1) 指定一个固定 UUID（推荐从已有客户端复制，或用 uuidgen 生成）
+uuid="123e4567-e89b-12d3-a456-426614174000" num=4 bash <(curl -Ls https://gh-raw.966788.xyz/xray-warp/argosb-nw-vps.sh)
+
+# 2) 现场生成再传入
+uuid="$(uuidgen)" num=4 bash <(curl -Ls https://gh-raw.966788.xyz/xray-warp/argosb-nw-vps.sh)
+
+# 3) 与端口 / 唯一出口等参数组合
+uuid="123e4567-e89b-12d3-a456-426614174000" ports="20001 20002" uniq=y bash <(curl -Ls https://gh-raw.966788.xyz/xray-warp/argosb-nw-vps.sh)
+```
+
+- **格式要求**：必须是合法的 `8-4-4-4-12` 十六进制 UUID（如 `123e4567-e89b-12d3-a456-426614174000`），否则客户端无法握手连接。
+- **查看已用 UUID**：安装后执行 `bash <(curl -Ls https://gh-raw.966788.xyz/xray-warp/argosb-nw-vps.sh) list`，节点分享链接里即含当前 UUID。
+- **适用范围**：`uuid` 仅 VPS 版（Vmess-ws / Xray）使用；OpenWrt 版是 socks5/http 代理，无 UUID 概念，改用 `user` / `pass` 鉴权。
 
 ---
 

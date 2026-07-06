@@ -13,8 +13,23 @@
 #   num=5 bash argosb-multiwarp.sh                 # 开 5 个 vmess-ws 端口，各配 1 套 WARP
 #   num=3 startport=20000 bash argosb-multiwarp.sh # 指定起始端口 20000,20001,20002
 #   ports="20001 20002 30000" bash argosb-multiwarp.sh  # 显式指定端口列表
-#   uuid="xxxx-..." num=4 bash argosb-multiwarp.sh # 指定统一 UUID
 #   uniq=y num=5 bash argosb-multiwarp.sh          # 强制每个端口出口 IP 互不相同（默认关闭）
+#
+# ============================================================================
+#  ★ uuid 参数用法（所有 vmess-ws 端口共用的客户端 UUID / 节点 id）
+# ----------------------------------------------------------------------------
+#   作用：所有端口共用同一个 UUID，客户端只需维护一份凭据即可连接全部节点。
+#   默认：不传时自动生成随机 UUID（取自 /proc/sys/kernel/random/uuid）。
+#   传法：以“环境变量前缀”形式写在命令最前面（等号两侧不留空格）：
+#     # 1) 指定一个固定 UUID（推荐从已有客户端复制，或用 uuidgen 生成）
+#     uuid="123e4567-e89b-12d3-a456-426614174000" num=4 bash argosb-multiwarp.sh
+#     # 2) 现场生成再传入
+#     uuid="$(uuidgen)" num=4 bash argosb-multiwarp.sh
+#     # 3) 与端口/唯一出口等参数组合
+#     uuid="123e4567-e89b-12d3-a456-426614174000" ports="20001 20002" uniq=y bash argosb-multiwarp.sh
+#   要求：必须是合法的 8-4-4-4-12 十六进制格式，否则客户端将无法握手连接。
+#   查看：安装后可执行 `bash argosb-multiwarp.sh list` 查看已写入的 uuid。
+# ============================================================================
 #
 # 管理：
 #   bash argosb-multiwarp.sh list   # 查看节点信息
@@ -139,6 +154,8 @@ for c in curl openssl; do ensure_pkg "$c" || exit 1; done
 mkdir -p "$WORKDIR"
 
 # ---------- 参数 ----------
+# ★ uuid 参数：所有端口共用的客户端 UUID；传 uuid=... 则用指定值，不传则自动生成随机 UUID。
+#   用法详见文件头“★ uuid 参数用法”一节。
 uuid="${uuid:-$(cat /proc/sys/kernel/random/uuid)}"
 wspath="${wspath:-/argosbmw}"
 uniq="${uniq:-n}"           # 是否强制每个出口 IP 唯一（y/n），默认 n（不检测）；需要时传 uniq=y 开启
