@@ -125,6 +125,7 @@ bash <(curl -Ls https://gh-raw.966788.xyz/xray-warp/argosb-nw-warp-argo.sh) del 
 > `trycloudflare.com` 是临时隧道，服务重启后域名会变；每次以 `list` 输出的最新链接为准。端口数很大时会同时运行大量 WARP / cloudflared 进程，VPS 内存与 Cloudflare 临时隧道限流都可能成为瓶颈。
 > 默认优选后缀顺序为 `fast.rthink.vip`、`cf.rthink.vip`、`turbo.rthink.vip`、`edge.rthink.vip`、`flare.rthink.vip`、`saas.rthink.vip`，超过 6 个节点后循环使用；每次生成都会换随机前缀。
 > 订阅输出会同时给出真实 `trycloudflare.com` 链接和优选域名展示链接。普通订阅 URL 不能像 VMess 节点那样单独指定 Host/SNI，优选订阅是否可直接打开取决于你的优选域名解析/CDN规则；节点本身仍按优选域名方式生成。
+> 大批量临时隧道建议先从 `num=10~30` 试起。`num=150` 会同时保活 150 个 `cloudflared` 进程，Cloud Shell / 小内存 VPS 很容易遇到资源瓶颈或 Cloudflare 临时隧道限流；脚本会边申请边刷新 `nodes.txt`，可反复执行 `list` 查看已生成的部分节点。
 
 ### 三、OpenWrt / 软路由版（socks5 + http + https，sing-box）
 

@@ -557,12 +557,18 @@ wait_domain(){
   return 1
 }
 
+flush_info(){
+  cp "$INFO.tmp" "$INFO"
+}
+
 {
   echo "ArgoSB-WARP-Argo 节点信息"
   echo "生成时间：$(date '+%F %T %Z')"
   echo "说明：trycloudflare 临时域名重启后会变化，请以本文件最新内容为准。"
+  echo "状态：正在申请临时隧道，list 会持续显示已生成的节点。"
   echo
 } > "$INFO.tmp"
+flush_info
 
 : > "$SUBDIR/vmess.links.tmp"
 {
@@ -584,6 +590,7 @@ while IFS="$(printf '\t')" read -r idx port egress; do
       echo "    日志：$log"
       echo
     } >> "$INFO.tmp"
+    flush_info
     continue
   fi
 
@@ -621,6 +628,7 @@ while IFS="$(printf '\t')" read -r idx port egress; do
     echo "$vmess_link"
     echo
   } >> "$INFO.tmp"
+  flush_info
 done < "$TUNNELS"
 
 if [ -s "$SUBDIR/vmess.links.tmp" ]; then
@@ -665,12 +673,14 @@ if kill -0 "$SUB_PID" 2>/dev/null; then
       echo "说明：普通订阅 URL 不能像 VMess 节点一样单独指定 Host/SNI；优选订阅是否可直连取决于你的优选域名解析/CDN规则。"
       echo
     } >> "$INFO.tmp"
+    flush_info
   else
     {
       echo "订阅链接申请失败"
       echo "日志：$LOGDIR/sub-argo.log"
       echo
     } >> "$INFO.tmp"
+    flush_info
   fi
 else
   {
@@ -678,6 +688,7 @@ else
     echo "日志：$LOGDIR/sub-http.log"
     echo
   } >> "$INFO.tmp"
+  flush_info
 fi
 
 mv "$INFO.tmp" "$INFO"

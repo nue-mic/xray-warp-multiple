@@ -37,6 +37,8 @@ Assert-Contains $content 'python3 -m http.server' "serves subscriptions over loc
 Assert-Contains $content 'sub-argo.log' "starts a separate subscription tunnel"
 Assert-Contains $content 'V2Ray' "prints v2ray subscription links"
 Assert-Contains $content '/clash.yaml' "prints clash subscription links"
+Assert-Contains $content 'flush_info()' "flushes nodes.txt incrementally"
+Assert-Contains $content 'cp "$INFO.tmp" "$INFO"' "keeps list output available during long tunnel runs"
 Assert-Contains $content '[ "$cmd" = "list" ]' "supports list command"
 Assert-Contains $content '[ "$cmd" = "del" ]' "supports del command"
 
