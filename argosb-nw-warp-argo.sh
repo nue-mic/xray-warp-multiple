@@ -10,6 +10,7 @@
 #   ports="20001 20002 30000" bash argosb-nw-warp-argo.sh
 #   uuid="123e4567-e89b-12d3-a456-426614174000" num=4 bash argosb-nw-warp-argo.sh
 #   uniq=y num=5 bash argosb-nw-warp-argo.sh
+#   prefer_suffixes="fast.rthink.vip cf.rthink.vip" num=5 startport=20000 bash argosb-nw-warp-argo.sh
 #
 # 管理：
 #   bash argosb-nw-warp-argo.sh list
@@ -18,8 +19,9 @@
 # 说明：
 #   1. 每个端口会注册一套免费 WARP 账号，xray 用 inboundTag -> warp-N 分流。
 #   2. 每个本地端口启动一个 cloudflared 临时隧道，生成独立 trycloudflare 域名。
-#   3. 临时隧道域名在服务重启后会变化，list 看到的是最近一次启动生成的链接。
-#   4. 免费 WARP 不保证每个出口公网 IP 都不同；需要时使用 uniq=y 强制探测去重。
+#   3. 默认把节点 add/server 改写为“随机前缀.优选后缀”；Host/SNI 仍保持 trycloudflare 真域名。
+#   4. 临时隧道域名在服务重启后会变化，list 看到的是最近一次启动生成的链接。
+#   5. 免费 WARP 不保证每个出口公网 IP 都不同；需要时使用 uniq=y 强制探测去重。
 # =============================================================================
 set -o pipefail
 export LANG=en_US.UTF-8
@@ -32,6 +34,7 @@ INFO="$WORKDIR/nodes.txt"
 META="$WORKDIR/meta.env"
 TUNNELS="$WORKDIR/tunnels.tsv"
 RUNNER="$WORKDIR/run.sh"
+SUBDIR="$WORKDIR/sub"
 
 red(){ echo -e "\033[31m$1\033[0m"; }
 green(){ echo -e "\033[32m$1\033[0m"; }
@@ -162,8 +165,24 @@ b64_one_line(){
   fi
 }
 
-for c in curl openssl; do ensure_pkg "$c" || exit 1; done
-mkdir -p "$WORKDIR/logs"
+random_label(){
+  local hex
+  hex=$(od -An -N4 -tx4 /dev/urandom 2>/dev/null | tr -d ' \n')
+  [ -z "$hex" ] && hex="$(date +%s)$RANDOM"
+  echo "wa-$hex"
+}
+
+pick_prefer_suffix(){
+  local idx="$1" suffix_arr count pos
+  suffix_arr=($prefer_suffixes)
+  count=${#suffix_arr[@]}
+  [ "$count" -gt 0 ] || return 1
+  pos=$(( (idx - 1) % count ))
+  echo "${suffix_arr[$pos]}"
+}
+
+for c in curl openssl python3; do ensure_pkg "$c" || exit 1; done
+mkdir -p "$WORKDIR/logs" "$SUBDIR"
 
 uuid="${uuid:-$(cat /proc/sys/kernel/random/uuid 2>/dev/null)}"
 [ -z "$uuid" ] && uuid="$(openssl rand -hex 16 | sed -E 's/(.{8})(.{4})(.{4})(.{4})(.{12})/\1-\2-\3-\4-\5/')"
@@ -178,6 +197,10 @@ maxtry="${maxtry:-30}"
 regretry="${regretry:-12}"
 regsleep="${regsleep:-3}"
 tunnel_wait="${tunnel_wait:-60}"
+sub_port="${sub_port:-$(( (RANDOM % 10000) + 40000 ))}"
+prefer="${prefer:-y}"
+DEFAULT_PREFER_SUFFIXES="fast.rthink.vip cf.rthink.vip turbo.rthink.vip edge.rthink.vip flare.rthink.vip saas.rthink.vip"
+prefer_suffixes="${prefer_suffixes:-$DEFAULT_PREFER_SUFFIXES}"
 
 if [ -n "$ports" ]; then
   PORT_LIST=($ports)
@@ -365,6 +388,9 @@ echo "uuid=$uuid" >> "$META"
 echo "wspath=$wspath" >> "$META"
 printf 'ports="%s"\n' "${PORT_LIST[*]}" >> "$META"
 echo "tunnel_wait=$tunnel_wait" >> "$META"
+echo "sub_port=$sub_port" >> "$META"
+printf 'prefer="%s"\n' "$prefer" >> "$META"
+printf 'prefer_suffixes="%s"\n' "$prefer_suffixes" >> "$META"
 
 idx=0
 for p in "${PORT_LIST[@]}"; do
@@ -468,9 +494,12 @@ INFO="$WORKDIR/nodes.txt"
 TUNNELS="$WORKDIR/tunnels.tsv"
 META="$WORKDIR/meta.env"
 LOGDIR="$WORKDIR/logs"
+SUBDIR="$WORKDIR/sub"
+V2RAY_SUB="$SUBDIR/v2ray"
+CLASH_SUB="$SUBDIR/clash.yaml"
 
 . "$META"
-mkdir -p "$LOGDIR"
+mkdir -p "$LOGDIR" "$SUBDIR"
 
 b64_one_line(){
   if base64 --help 2>&1 | grep -q -- '-w'; then
@@ -480,8 +509,25 @@ b64_one_line(){
   fi
 }
 
+random_label(){
+  local hex
+  hex=$(od -An -N4 -tx4 /dev/urandom 2>/dev/null | tr -d ' \n')
+  [ -z "$hex" ] && hex="$(date +%s)$RANDOM"
+  echo "wa-$hex"
+}
+
+pick_prefer_suffix(){
+  local idx="$1" suffix_arr count pos
+  suffix_arr=($prefer_suffixes)
+  count=${#suffix_arr[@]}
+  [ "$count" -gt 0 ] || return 1
+  pos=$(( (idx - 1) % count ))
+  echo "${suffix_arr[$pos]}"
+}
+
 cleanup(){
   [ -n "$XRAY_PID" ] && kill "$XRAY_PID" 2>/dev/null
+  [ -n "$SUB_PID" ] && kill "$SUB_PID" 2>/dev/null
   if [ -n "$CF_PIDS" ]; then
     kill $CF_PIDS 2>/dev/null
   fi
@@ -490,6 +536,7 @@ cleanup(){
 trap cleanup INT TERM EXIT
 
 rm -f "$LOGDIR"/argo-*.log "$INFO.tmp"
+rm -f "$LOGDIR"/sub-argo.log "$LOGDIR"/sub-http.log "$SUBDIR"/vmess.links.tmp "$SUBDIR"/node.names.tmp "$CLASH_SUB.tmp" "$V2RAY_SUB.tmp"
 "$BIN" run -c "$CONF" > "$LOGDIR/xray.log" 2>&1 &
 XRAY_PID=$!
 sleep 2
@@ -517,6 +564,11 @@ wait_domain(){
   echo
 } > "$INFO.tmp"
 
+: > "$SUBDIR/vmess.links.tmp"
+{
+  echo "proxies:"
+} > "$CLASH_SUB.tmp"
+
 CF_PIDS=""
 while IFS="$(printf '\t')" read -r idx port egress; do
   [ -n "$idx" ] || continue
@@ -535,19 +587,107 @@ while IFS="$(printf '\t')" read -r idx port egress; do
     continue
   fi
 
-  vmess_json=$(printf '{"v":"2","ps":"WA-warp-%s-%s","add":"%s","port":"443","id":"%s","aid":"0","scy":"auto","net":"ws","type":"none","host":"%s","path":"%s","tls":"tls","sni":"%s","alpn":""}' "$idx" "$port" "$domain" "$uuid" "$domain" "$wspath" "$domain")
+  server_domain="$domain"
+  if [ "${prefer:-y}" = y ]; then
+    suffix=$(pick_prefer_suffix "$idx")
+    [ -n "$suffix" ] && server_domain="$(random_label).$suffix"
+  fi
+
+  vmess_json=$(printf '{"v":"2","ps":"WA-warp-%s-%s","add":"%s","port":"443","id":"%s","aid":"0","scy":"auto","net":"ws","type":"none","host":"%s","path":"%s","tls":"tls","sni":"%s","alpn":""}' "$idx" "$port" "$server_domain" "$uuid" "$domain" "$wspath" "$domain")
   vmess_link="vmess://$(printf '%s' "$vmess_json" | b64_one_line)"
+  node_name="WA-warp-$idx-$port"
+  printf '%s\n' "$vmess_link" >> "$SUBDIR/vmess.links.tmp"
+  printf '%s\n' "$node_name" >> "$SUBDIR/node.names.tmp"
   {
-    echo "[$idx] $domain:443  ->  127.0.0.1:$port  ->  WARP 出口 #$idx  出口IP=$egress"
+    echo "  - name: \"$node_name\""
+    echo "    type: vmess"
+    echo "    server: $server_domain"
+    echo "    port: 443"
+    echo "    uuid: $uuid"
+    echo "    alterId: 0"
+    echo "    cipher: auto"
+    echo "    udp: true"
+    echo "    tls: true"
+    echo "    network: ws"
+    echo "    ws-opts:"
+    echo "      path: $wspath"
+    echo "      headers:"
+    echo "        Host: $domain"
+    echo "    servername: $domain"
+    echo "    skip-cert-verify: true"
+  } >> "$CLASH_SUB.tmp"
+  {
+    echo "[$idx] $server_domain:443  Host/SNI=$domain  ->  127.0.0.1:$port  ->  WARP 出口 #$idx  出口IP=$egress"
     echo "$vmess_link"
     echo
   } >> "$INFO.tmp"
 done < "$TUNNELS"
 
+if [ -s "$SUBDIR/vmess.links.tmp" ]; then
+  b64_one_line < "$SUBDIR/vmess.links.tmp" > "$V2RAY_SUB.tmp"
+  {
+    echo
+    echo "proxy-groups:"
+    echo "  - name: WA-AUTO"
+    echo "    type: select"
+    echo "    proxies:"
+    while IFS= read -r node_name; do
+      [ -n "$node_name" ] && echo "      - $node_name"
+    done < "$SUBDIR/node.names.tmp"
+    echo
+    echo "rules:"
+    echo "  - MATCH,WA-AUTO"
+  } >> "$CLASH_SUB.tmp"
+  mv "$V2RAY_SUB.tmp" "$V2RAY_SUB"
+  mv "$CLASH_SUB.tmp" "$CLASH_SUB"
+fi
+
+python3 -m http.server "${sub_port:-48080}" --bind 127.0.0.1 --directory "$SUBDIR" > "$LOGDIR/sub-http.log" 2>&1 &
+SUB_PID=$!
+sleep 1
+if kill -0 "$SUB_PID" 2>/dev/null; then
+  "$CLOUDFLARED" tunnel --url http://127.0.0.1:"${sub_port:-48080}" --edge-ip-version auto --no-autoupdate --protocol http2 > "$LOGDIR/sub-argo.log" 2>&1 &
+  sub_cpid=$!
+  CF_PIDS="$CF_PIDS $sub_cpid"
+  sub_domain=$(wait_domain "$LOGDIR/sub-argo.log")
+  if [ -n "$sub_domain" ]; then
+    sub_server_domain="$sub_domain"
+    if [ "${prefer:-y}" = y ]; then
+      sub_suffix=$(pick_prefer_suffix 1)
+      [ -n "$sub_suffix" ] && sub_server_domain="$(random_label).$sub_suffix"
+    fi
+    {
+      echo "订阅链接"
+      echo "V2Ray真实订阅：https://$sub_domain/v2ray"
+      echo "Clash真实订阅：https://$sub_domain/clash.yaml"
+      echo "V2Ray优选订阅：https://$sub_server_domain/v2ray"
+      echo "Clash优选订阅：https://$sub_server_domain/clash.yaml"
+      echo "说明：普通订阅 URL 不能像 VMess 节点一样单独指定 Host/SNI；优选订阅是否可直连取决于你的优选域名解析/CDN规则。"
+      echo
+    } >> "$INFO.tmp"
+  else
+    {
+      echo "订阅链接申请失败"
+      echo "日志：$LOGDIR/sub-argo.log"
+      echo
+    } >> "$INFO.tmp"
+  fi
+else
+  {
+    echo "订阅 HTTP 服务启动失败"
+    echo "日志：$LOGDIR/sub-http.log"
+    echo
+  } >> "$INFO.tmp"
+fi
+
 mv "$INFO.tmp" "$INFO"
 while true; do
   if ! kill -0 "$XRAY_PID" 2>/dev/null; then
     echo "xray 已退出，supervisor 将重启服务。" >> "$LOGDIR/supervisor.log"
+    exit 1
+  fi
+  if ! kill -0 "$SUB_PID" 2>/dev/null; then
+    echo "订阅 HTTP 服务已退出，supervisor 将重启服务。" >> "$LOGDIR/supervisor.log"
     exit 1
   fi
   for pid in $CF_PIDS; do
